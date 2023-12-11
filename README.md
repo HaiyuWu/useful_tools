@@ -26,3 +26,6 @@ python3 assign_pairs_to_folds.py \
 -d output/folder \
 -name output/file/name
 ```
+Note that this algorithm only considers the first identity of each impostor pair, 
+but it is still able to provide a good result. If you can come up with a better algorithm, welcome to share
+it. :)

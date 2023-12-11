@@ -6,39 +6,50 @@ import argparse
 
 def order_by_identity(args):
     gen, imp = np.genfromtxt(args.genuine_file, dtype=str), np.genfromtxt(args.impostor_file, dtype=str)
-
+    chunk_size = args.fold_size // 2
     all_pairs = defaultdict(lambda: {'gen': [], 'imp': []})
-    assigned_gen_pairs = set()
-    assigned_imp_pairs = set()
-
     for gen_pair in gen:
-        identity = path.basename(gen_pair[0]).split("_")[0]
-        all_pairs[identity]['gen'].append(tuple(gen_pair))
+        identity = path.split(gen_pair[0])[1].split("_")[0]
+        all_pairs[identity]['gen'].append(gen_pair)
 
     for imp_pair in imp:
-        identities = [path.basename(imp_pair[i]).split("_")[0] for i in range(2)]
-        imp_pair_tuple = tuple(imp_pair)
-        all_pairs[identities[0]]['imp'].append(imp_pair_tuple)
-        if identities[0] != identities[1]:
-            all_pairs[identities[1]]['imp'].append(imp_pair_tuple)
+        identity = path.split(imp_pair[0])[1].split("_")[0]
+        all_pairs[identity]['imp'].append(imp_pair)
 
+    # Initialize lists for genuine and imposter
     gen_list = [[] for _ in range(args.fold_num)]
     imp_list = [[] for _ in range(args.fold_num)]
+    identity_in_sublists = defaultdict(set)
+    leftover_pairs = {'gen': [], 'imp': []}
 
-    # Distribute pairs evenly across folds
-    for fold in range(10):
-        for identity, pairs in all_pairs.items():
-            for gen_pair in pairs['gen']:
-                if len(gen_list[fold]) < args.fold_size and gen_pair not in assigned_gen_pairs:
-                    gen_list[fold].append(gen_pair)
-                    assigned_gen_pairs.add(gen_pair)
+    # First pass: fill up sublists without overlapping identities
+    for identity, pairs in all_pairs.items():
+        for i in range(args.fold_num):
+            if (len(gen_list[i]) + len(pairs['gen'])) <= chunk_size and (len(imp_list[i]) + len(pairs['imp'])) <= chunk_size:
+                gen_list[i].extend(pairs['gen'])
+                imp_list[i].extend(pairs['imp'])
+                identity_in_sublists[identity].add(i)
+                # Remove the added pairs to avoid re-adding them later
+                del pairs['gen']
+                del pairs['imp']
+                break
+        else:
+            # If an identity could not be fully placed, add to leftover pairs
+            leftover_pairs['gen'].extend(pairs['gen'])
+            leftover_pairs['imp'].extend(pairs['imp'])
 
-            for imp_pair in pairs['imp']:
-                if len(imp_list[fold]) < args.fold_size and imp_pair not in assigned_imp_pairs:
-                    imp_list[fold].append(imp_pair)
-                    assigned_imp_pairs.add(imp_pair)
+    # Second pass: distribute leftover pairs
+    for category in ['gen', 'imp']:
+        for pair in leftover_pairs[category]:
+            identity = path.split(pair[0])[1].split("_")[0]
+            for i in range(args.fold_num):
+                sublist = gen_list[i] if category == 'gen' else imp_list[i]
+                if len(sublist) < chunk_size:
+                    sublist.append(pair)
+                    identity_in_sublists[identity].add(i)
+                    break
 
-    # Reporting sizes for debugging purposes
+    # Report the number of pairs in gen_list[i] and imp_list[i]
     for i in range(args.fold_num):
         print(f'gen_list[{i}] size: {len(gen_list[i])}')
         print(f'imp_list[{i}] size: {len(imp_list[i])}')
